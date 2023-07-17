@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 /// <summary>
 /// 陣形
@@ -11,6 +12,19 @@ public class BattleFormation
     public BattleRow row1;
     public BattleRow row2;
     public BattleRow row3;
+    public IEnumerable<BattleRow> Rows => new[] { row1, row2, row3 };
+    public IEnumerable<SoldierSlot> Slots => Rows.SelectMany(r => r.slots);
+    public IEnumerable<SoldierSlot> Alives => Rows.SelectMany(r => r.Alives);
+
+    public bool HasEmptySlot => Rows.Any(r => r.HasEmptySlot);
+    public bool HasAnySoldier => Rows.Any(r => r.slots.Count > 0);
+
+    public void AddRecruitSoldier()
+    {
+        var emptySlot = Slots.FirstOrDefault(r => r.IsEmpty);
+        Debug.Assert(emptySlot != null);
+        emptySlot.Recruit();
+    }
 }
 
 /// <summary>
@@ -18,21 +32,49 @@ public class BattleFormation
 /// </summary>
 public class BattleRow
 {
-    public List<Soldier> soldiers;
+    public List<SoldierSlot> slots;
+    public IEnumerable<SoldierSlot> Alives => slots.Where(s => s.IsAlive);
 
-    public float MeanHp => soldiers.Average(s => s.hp);
-    public float MinHp => soldiers.Min(s => s.hp);
+    public float MeanHp => Alives.Select(s => s.hp).DefaultIfEmpty(0).Average();
+    public float MinHp => Alives.Select(s => s.hp).DefaultIfEmpty(0).Min();
+
+    public bool HasEmptySlot => slots.Any(s => s.IsEmpty);
 }
 
 /// <summary>
 /// 兵士
 /// </summary>
-public class Soldier
+public class SoldierSlot
 {
     public int level;
     public int experience;
     public float hp;
     public float hpMax;
+
+    public bool IsAlive => !IsEmpty && hp > 0;
+    public bool IsEmpty => level == 0;
+
+    internal void AddExperience(int v)
+    {
+        experience += v;
+    }
+
+    internal void PromoteIfCan()
+    {
+        if (experience <= 100) return;
+        experience -= 100;
+        level++;
+    }
+
+    internal void Recruit()
+    {
+        Debug.Assert(IsEmpty);
+
+        level = 1;
+        experience = 0;
+        hpMax = 20;
+        hp = hpMax;
+    }
 }
 
 
@@ -58,9 +100,9 @@ public class BattleActor
     /// 全滅していたらtrue
     /// </summary>
     public bool IsEliminated =>
-        formation.row1.soldiers.Count == 0 &&
-        formation.row2.soldiers.Count == 0 &&
-        formation.row3.soldiers.Count == 0;
+        formation.row1.slots.Count == 0 &&
+        formation.row2.slots.Count == 0 &&
+        formation.row3.slots.Count == 0;
 
     public void Swap12()
     {
@@ -200,7 +242,7 @@ public class BattleSequence
                 // 生き残っている兵士のhpをランダムに回復する。
                 foreach (var row in new[] { actor.formation.row1, actor.formation.row2, actor.formation.row3 })
                 {
-                    foreach (var soldier in row.soldiers)
+                    foreach (var soldier in row.slots)
                     {
                         if (soldier.hp > 0)
                         {
@@ -222,7 +264,7 @@ public class BattleSequence
     {
         // ランダムな順番で兵士を攻撃させる。
         var soldiers = new[] { attacker, defender }
-            .SelectMany(a => a.formation.row1.soldiers.Select(s => (a, s)))
+            .SelectMany(a => a.formation.row1.slots.Select(s => (a, s)))
             .Where(x => x.s.hp > 0)
             .OrderBy(x => Random.value);
         foreach (var (actor, soldier) in soldiers)
@@ -230,7 +272,7 @@ public class BattleSequence
             if (soldier.hp == 0) continue;
             var opponent = actor == attacker ? defender : attacker;
 
-            var attackTarget = opponent.formation.row1.soldiers
+            var attackTarget = opponent.formation.row1.slots
                 .Where(s => s.hp > 0)
                 .OrderBy(s => Random.value)
                 .FirstOrDefault();

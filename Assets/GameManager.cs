@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -14,5 +15,15 @@ public class GameManager : MonoBehaviour
     void Update()
     {
         
+    }
+}
+
+public class TODO
+{
+    public static TODO Instance { get; private set; }
+
+    internal void StartBattle(Character actor, Character target)
+    {
+        throw new NotImplementedException();
     }
 }
